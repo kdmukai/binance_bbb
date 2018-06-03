@@ -1,4 +1,5 @@
 settings_local.conf
+portfolio_local.conf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

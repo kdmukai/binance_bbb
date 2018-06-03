@@ -21,16 +21,30 @@ parser.add_argument('amount', type=float,
                     help="The quantity of the crypto to spend (e.g. 0.05)")
 
 # Optional switches
-parser.add_argument('-c', '--config',
+parser.add_argument('-c', '--settings_config',
                     default="settings_local.conf",
-                    dest="config_file",
-                    help="Override default config file location")
+                    dest="settings_config_file",
+                    help="Override default settings config file location")
 
-parser.add_argument('-t', '--test',
-                    default=True,
-                    dest="test_mode",
-                    help="""Test API connection and portfolio config without
+parser.add_argument('-p', '--portfolio_config',
+                    default="portfolio_local.conf",
+                    dest="portfolio_config_file",
+                    help="Override default portfolio config file location")
+
+parser.add_argument('-l', '--live',
+                    action='store_true',
+                    default=False,
+                    dest="live_mode",
+                    help="""Submit live orders. When omitted, just tests API
+                        connection, portfolio weights, and amount without
                         submitting actual orders""")
+
+parser.add_argument('-j', '--job',
+                    action='store_true',
+                    default=False,
+                    dest="job_mode",
+                    help="""Suppress the confirmation step before submitting
+                        actual orders""")
 
 # TODO: input API key/secret from command line
 
@@ -38,30 +52,32 @@ parser.add_argument('-t', '--test',
 args = parser.parse_args()
 spending_crypto = args.crypto
 spending_crypto_total_amount = args.amount
-test_mode = args.test_mode
+live_mode = args.live_mode
+job_mode = args.job_mode
 
 print("%s: STARTED: %s" % (get_timestamp(), args))
 
-if test_mode:
+if not live_mode:
     print("\n")
-    print("\t================= TEST MODE =================")
-    print("\t*                                           *")
-    print("\t*     No actual trades being submitted!     *")
-    print("\t*                                           *")
-    print("\t=============================================")
+    print("\t================= NOT in Live mode =================")
+    print("\t*                                                  *")
+    print("\t*        No actual trades being submitted!         *")
+    print("\t*                                                  *")
+    print("\t====================================================")
     print("\n")
 
 # Read settings
 config = configparser.SafeConfigParser()
-config.read(args.config_file)
+config.read(args.settings_config_file)
 
-config_section = 'API'
-api_key = config.get(config_section, 'API_KEY')
-api_secret = config.get(config_section, 'SECRET_KEY')
+api_key = config.get('API', 'API_KEY')
+api_secret = config.get('API', 'SECRET_KEY')
 # aws_access_key_id = config.get(config_section, 'AWS_ACCESS_KEY_ID')
 # aws_secret_access_key = config.get(config_section, 'AWS_SECRET_ACCESS_KEY')
 # sns_topic = config.get(config_section, 'SNS_TOPIC')
 
+config = configparser.SafeConfigParser()
+config.read(args.portfolio_config_file)
 portfolio_weights = {}
 for buy_crypto, weight in config.items('portfolio_weights'):
     portfolio_weights[buy_crypto.upper()] = float(weight)
@@ -113,17 +129,17 @@ for buy_crypto, weight in portfolio_weights.items():
         if not min_notional:
             raise Exception("stepSize not found in %s info" % market)
 
-        print("%s target order size: %f (minNotional: %f, stepSize: %f)" % (
+        print("%s target order size: %f %s (minNotional: %f, stepSize: %f)" % (
             market,
             spending_crypto_value,
+            spending_crypto,
             min_notional,
             step_size)
         )
 
         if spending_crypto_value < min_notional:
             raise Exception(
-                """Cannot purchase %s at weight %f. Resulting order of %f %s is
-                    below the minNotional value of %f %s""" % (
+                "Cannot purchase %s at weight %f. Resulting order of %f %s is below the minNotional value of %f %s" % (
                         buy_crypto,
                         weight,
                         spending_crypto_value,
@@ -137,7 +153,15 @@ for buy_crypto, weight in portfolio_weights.items():
         "step_size": step_size
     }
 
+if live_mode and not job_mode:
+    print("\n================================================\n")
+    response = input("\tLive purchase! Confirm Y/[n]: ")
+    if response != 'Y':
+        print("Exiting without submitting orders.")
+        exit()
 
+
+total_crypto_spent = 0.0
 for market, spending_amount in spending_amounts.items():
     # What are the current bids?
     amount = spending_amount.get("amount")
@@ -159,11 +183,19 @@ for market, spending_amount in spending_amounts.items():
     # Count the step_size's decimal precision; zero if greater than zero.
     decimals = len(str(round(1/step_size))) - 1
     quantity = round(quantity, decimals)
+    order_amount = quantity*first_bid
     print("%s: %f" % (market, quantity))
 
-    print("placing %s order: %f @ %.8f %s. Total spend: %.8f %s" % (market, quantity, first_bid, spending_crypto, quantity*first_bid, spending_crypto))
+    print("placing %s order: %f @ %.8f %s. Total spend: %.8f %s" % (
+        market,
+        quantity,
+        first_bid,
+        spending_crypto,
+        order_amount,
+        spending_crypto)
+    )
 
-    if test_mode:
+    if not live_mode:
         order = client.create_test_order(
             symbol=market,
             side=Client.SIDE_BUY,
@@ -173,6 +205,14 @@ for market, spending_amount in spending_amounts.items():
         print(order)
 
     else:
-        raise Exception("Real buys aren't implemented yet!")
+        order = client.order_market_buy(
+            symbol=market,
+            quantity=quantity)
+
+    total_crypto_spent += order_amount
 
 
+print("\n================================================")
+print ("Total orders placed: %.8f %s" % (total_crypto_spent, spending_crypto))
+if not live_mode:
+    print("(NOT in live mode - no actual orders placed!)")
