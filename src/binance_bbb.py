@@ -22,12 +22,12 @@ parser.add_argument('amount', type=float,
 
 # Optional switches
 parser.add_argument('-c', '--settings_config',
-                    default="settings_local.conf",
+                    default="conf/settings_local.conf",
                     dest="settings_config_file",
                     help="Override default settings config file location")
 
 parser.add_argument('-p', '--portfolio_config',
-                    default="portfolio_local.conf",
+                    default="conf/portfolio_local.conf",
                     dest="portfolio_config_file",
                     help="Override default portfolio config file location")
 
