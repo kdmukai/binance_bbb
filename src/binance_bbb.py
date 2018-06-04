@@ -2,6 +2,7 @@ import argparse
 import configparser
 import datetime
 import time
+import boto3
 
 from binance.client import Client
 
@@ -31,6 +32,11 @@ parser.add_argument('-p', '--portfolio_config',
                     dest="portfolio_config_file",
                     help="Override default portfolio config file location")
 
+parser.add_argument('-m', '--manual_portfolio',
+                    dest="portfolio_manual_override",
+                    help="""Override portfolio conf and buy the comma-separated
+cryptos listed""")
+
 parser.add_argument('-l', '--live',
                     action='store_true',
                     default=False,
@@ -44,7 +50,7 @@ parser.add_argument('-j', '--job',
                     default=False,
                     dest="job_mode",
                     help="""Suppress the confirmation step before submitting
-                        actual orders""")
+actual orders""")
 
 # TODO: input API key/secret from command line
 
@@ -72,15 +78,38 @@ config.read(args.settings_config_file)
 
 api_key = config.get('API', 'API_KEY')
 api_secret = config.get('API', 'SECRET_KEY')
-# aws_access_key_id = config.get(config_section, 'AWS_ACCESS_KEY_ID')
-# aws_secret_access_key = config.get(config_section, 'AWS_SECRET_ACCESS_KEY')
-# sns_topic = config.get(config_section, 'SNS_TOPIC')
 
-config = configparser.SafeConfigParser()
-config.read(args.portfolio_config_file)
+try:
+    sns_topic = config.get('AWS', 'SNS_TOPIC')
+    aws_access_key_id = config.get('AWS', 'AWS_ACCESS_KEY_ID')
+    aws_secret_access_key = config.get('AWS', 'AWS_SECRET_ACCESS_KEY')
+except configparser.NoSectionError:
+    sns_topic = None
+
+if sns_topic:
+    # Prep boto SNS client for email notifications
+    sns = boto3.client(
+        "sns",
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        region_name="us-east-1"     # N. Virginia
+    )
+
+
 portfolio_weights = {}
-for buy_crypto, weight in config.items('portfolio_weights'):
-    portfolio_weights[buy_crypto.upper()] = float(weight)
+
+if args.portfolio_manual_override:
+    for buy_crypto in args.portfolio_manual_override.split(','):
+        # Manually specified override cryptos all get set with equal weighting
+        portfolio_weights[buy_crypto] = 1.0
+
+else:
+    config = configparser.SafeConfigParser()
+    config.read(args.portfolio_config_file)
+
+    for buy_crypto, weight in config.items('portfolio_weights'):
+        portfolio_weights[buy_crypto.upper()] = float(weight)
+
 print(portfolio_weights)
 
 # Instantiate public and auth API clients
@@ -149,6 +178,7 @@ for buy_crypto, weight in portfolio_weights.items():
             )
 
     spending_amounts[market] = {
+        "buy_crypto": buy_crypto,
         "amount": spending_crypto_value,
         "step_size": step_size
     }
@@ -162,8 +192,10 @@ if live_mode and not job_mode:
 
 
 total_crypto_spent = 0.0
+purchase_summary = ""
 for market, spending_amount in spending_amounts.items():
     # What are the current bids?
+    buy_crypto = spending_amount.get("buy_crypto")
     amount = spending_amount.get("amount")
     step_size = spending_amount.get("step_size")
 
@@ -209,10 +241,27 @@ for market, spending_amount in spending_amounts.items():
             symbol=market,
             quantity=quantity)
 
+    purchase_summary += "%s: %.2f @ %.8f %s (approx %.8f %s total)\n" % (
+        buy_crypto,
+        quantity,
+        first_bid,
+        spending_crypto,
+        order_amount,
+        spending_crypto)
     total_crypto_spent += order_amount
 
 
+if sns_topic:
+    sns.publish(
+        TopicArn=sns_topic,
+        Subject="%0.4f %s portfolio buy order completed" % (
+            spending_crypto_total_amount,
+            spending_crypto),
+        Message=purchase_summary + ("\nlive_mode: %s" % live_mode)
+    )
+
 print("\n================================================")
+print(purchase_summary)
 print ("Total orders placed: %.8f %s" % (total_crypto_spent, spending_crypto))
 if not live_mode:
     print("(NOT in live mode - no actual orders placed!)")

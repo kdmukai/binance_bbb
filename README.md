@@ -27,7 +27,15 @@ a text editor and update it with your actual Binance API keys:
 [API]
 API_KEY = lkasjdfklasdfklasdf
 SECRET_KEY = lkasdjflksadjflkasjdflkasdfs
+
+
+[AWS]
+# Optional. Delete this section if you aren't using AWS SNS email notifications
+SNS_TOPIC = enter:your:arn:here
+AWS_ACCESS_KEY_ID = ABCDEFGHIJKLMNOP
+AWS_SECRET_ACCESS_KEY = foobarfoobarfoobar
 ```
+_As noted you can also customize or omit AWS SNS email notification integration._
 
 Also rename the dummy `portfolio.conf` to `portfolio_local.conf` for the next step.
 
@@ -70,6 +78,36 @@ XLM = 1.0
 ```
 Because EOS' weight is set to 0.0 the portfolio will ignore it and just follow the weights specified for the other two cryptos.
 
+# Usage
+```
+usage: binance_bbb.py [-h] [-c SETTINGS_CONFIG_FILE]
+                      [-p PORTFOLIO_CONFIG_FILE]
+                      [-m PORTFOLIO_MANUAL_OVERRIDE] [-l] [-j]
+                      crypto amount
+
+Binance Balanced Buying Bot
+
+positional arguments:
+  crypto                The ticker of the crypto to spend (e.g. 'BTC', 'ETH',
+                        etc)
+  amount                The quantity of the crypto to spend (e.g. 0.05)
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -c SETTINGS_CONFIG_FILE, --settings_config SETTINGS_CONFIG_FILE
+                        Override default settings config file location
+  -p PORTFOLIO_CONFIG_FILE, --portfolio_config PORTFOLIO_CONFIG_FILE
+                        Override default portfolio config file location
+  -m PORTFOLIO_MANUAL_OVERRIDE, --manual_portfolio PORTFOLIO_MANUAL_OVERRIDE
+                        Override portfolio conf and buy the comma-separated
+                        cryptos listed
+  -l, --live            Submit live orders. When omitted, just tests API
+                        connection, portfolio weights, and amount without
+                        submitting actual orders
+  -j, --job             Suppress the confirmation step before submitting
+                        actual orders
+```
+
 
 # Testing your portfolio
 
@@ -77,3 +115,18 @@ Because EOS' weight is set to 0.0 the portfolio will ignore it and just follow t
 Binance specifies a minimum buy order value for each crypto (aka `minNotional`). Let's say you're looking to buy equal amounts of 10 different cryptos and only want to spend 0.005 BTC altogether. Obviously each order's notional value will then be 0.0005 BTC.
 
 But the `minNotional` for BTC orders is 0.001; Binance will not let you place an order whose value is smaller than that.
+
+
+## Manual/Command-Line portfolios
+Use the `-m` or `--manual_portfolio` command line option to specify a comma-separated list of cryptos in lieu of your customized portfolio configuration. This option is intended to allow this bot to be used as a simple, schedulable buying bot for a single crypto or basic portfolio of cryptos. In this mode all manually-specified cryptos are given an equal weighting.
+
+For example, you might have a new crypto that you want to build a position in so you'll want to set it on its own dollar-cost averaging buy in schedule, separate from your broader portfolio schedule.
+
+Typically you'd set this up as its own cron job:
+```
+* */6 * * * /your/virtualenv/path/bin/python -u /your/binance_bbb/path/src/binance_bbb.py BTC 0.00125 -c /your/settings/path/your_settings_file.conf -m ICX,WAN >> /your/cron/log/path/cron.log 2>&1
+```
+In this case the specified 0.00125 BTC will be evenly divided between the two manual portfolio cryptos and will repeat this same buy every six hours.
+
+
+
