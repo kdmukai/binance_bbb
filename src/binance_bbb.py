@@ -4,6 +4,7 @@ import datetime
 import time
 import boto3
 
+from binance.exceptions import BinanceAPIException
 from binance.client import Client
 
 
@@ -104,15 +105,19 @@ if args.portfolio_manual_override:
         portfolio_weights[buy_crypto] = 1.0
 
 else:
-    config = configparser.SafeConfigParser()
-    config.read(args.portfolio_config_file)
+    try:
+        config = configparser.SafeConfigParser()
+        config.read(args.portfolio_config_file)
 
-    for buy_crypto, weight in config.items('portfolio_weights'):
-        portfolio_weights[buy_crypto.upper()] = float(weight)
+        for buy_crypto, weight in config.items('portfolio_weights'):
+            portfolio_weights[buy_crypto.upper()] = float(weight)
+    except configparser.NoSectionError:
+        print("Your portfolio config is not correctly configured")
+        exit()
 
 print(portfolio_weights)
 
-# Instantiate public and auth API clients
+# Instantiate API client
 client = Client(api_key, api_secret)
 
 # Get exchange info (pairs available, min order sizes, etc.)
@@ -158,23 +163,17 @@ for buy_crypto, weight in portfolio_weights.items():
         if not min_notional:
             raise Exception("stepSize not found in %s info" % market)
 
-        print("%s target order size: %f %s (minNotional: %f, stepSize: %f)" % (
-            market,
-            spending_crypto_value,
-            spending_crypto,
-            min_notional,
-            step_size)
+        print(
+            f"{market} target order size: " +
+            f"{spending_crypto_value:.8f} {spending_crypto} " +
+            f"(minNotional: {min_notional}, stepSize: {step_size:.2f})"
         )
 
         if spending_crypto_value < min_notional:
             raise Exception(
-                "Cannot purchase %s at weight %f. Resulting order of %f %s is below the minNotional value of %f %s" % (
-                        buy_crypto,
-                        weight,
-                        spending_crypto_value,
-                        spending_crypto,
-                        min_notional,
-                        spending_crypto)
+                f"Cannot purchase {buy_crypto} at weight {weight}. " +
+                f"Resulting order of {spending_crypto_value} {spending_crypto} " +
+                f"is below the minNotional value of {min_notional} {spending_crypto}"
             )
 
     spending_amounts[market] = {
@@ -200,7 +199,7 @@ for market, spending_amount in spending_amounts.items():
     step_size = spending_amount.get("step_size")
 
     if amount == 0.0:
-        print("Skipping %s because weight is set to 0.0" % market)
+        print(f"Skipping {market} because weight is set to 0.0")
         continue
 
     depth = client.get_order_book(symbol=market, limit=5)
@@ -216,9 +215,8 @@ for market, spending_amount in spending_amounts.items():
     decimals = len(str(round(1/step_size))) - 1
     quantity = round(quantity, decimals)
     order_amount = quantity*first_bid
-    print("%s: %f" % (market, quantity))
 
-    print("placing %s order: %f @ %.8f %s. Total spend: %.8f %s" % (
+    print("placing %s order: %5.2f @ %.8f %s. Total spend: %.8f %s" % (
         market,
         quantity,
         first_bid,
@@ -234,14 +232,25 @@ for market, spending_amount in spending_amounts.items():
             type=Client.ORDER_TYPE_MARKET,
             quantity=quantity)
 
-        print(order)
+        if order:
+            print(order)
 
     else:
-        order = client.order_market_buy(
-            symbol=market,
-            quantity=quantity)
+        try:
+            order = client.order_market_buy(
+                symbol=market,
+                quantity=quantity)
+        except BinanceAPIException as e:
+            print(f'Unable to place {market} order: {e}')
+            if sns_topic and live_mode:
+                sns.publish(
+                    TopicArn=sns_topic,
+                    Subject=f'Unable to place {market} order',
+                    Message=str(e)
+                )
+            exit()
 
-    purchase_summary += "%s: %.2f @ %.8f %s (approx %.8f %s total)\n" % (
+    purchase_summary += "%s: %5.2f @ %.8f %s = %.6f %s\n" % (
         buy_crypto,
         quantity,
         first_bid,
@@ -251,17 +260,20 @@ for market, spending_amount in spending_amounts.items():
     total_crypto_spent += order_amount
 
 
-if sns_topic:
+if sns_topic and live_mode:
+    if args.portfolio_manual_override:
+        subject = f"{total_crypto_spent:.4f} {spending_crypto} manual {args.portfolio_manual_override} buy order completed"
+    else:
+        subject = f"{total_crypto_spent:.4f} {spending_crypto} portfolio buy order completed"
     sns.publish(
         TopicArn=sns_topic,
-        Subject="%0.4f %s portfolio buy order completed" % (
-            spending_crypto_total_amount,
-            spending_crypto),
-        Message=purchase_summary + ("\nlive_mode: %s" % live_mode)
+        Subject=subject,
+        Message=purchase_summary
     )
+
 
 print("\n================================================")
 print(purchase_summary)
-print ("Total orders placed: %.8f %s" % (total_crypto_spent, spending_crypto))
+print(f"Total orders placed: {total_crypto_spent:.8f} {spending_crypto}")
 if not live_mode:
     print("(NOT in live mode - no actual orders placed!)")

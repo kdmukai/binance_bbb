@@ -129,4 +129,27 @@ Typically you'd set this up as its own cron job:
 In this case the specified 0.00125 BTC will be evenly divided between the two manual portfolio cryptos and will repeat this same buy every six hours.
 
 
+#### Mac notes
+Edit the crontab:
+```
+env EDITOR=nano crontab -e
+```
+
+View the current crontab:
+```
+crontab -l
+```
+
+
+## Disclaimer
+_I built this to execute my own micro dollar cost-averaging crypto buys. Use and modify it at your own risk. This is also not investment advice. I am not an investment advisor. You should do your own research and invest in the way that best suits your needs and risk profile.  Good luck and HODL strong._
+
+
+# Tips
+If you found this useful, send me some digital love
+- ETH: 0xb581603e2C4eb9a9Ece4476685f0600CeB472241
+- BTC: 13u1YbpSzNsvVpPMyzaDAfzP2jRcZUwh96
+- LTC: LMtPGHCQ3as6AEC9ueX4tVQw7GvHegv3fA
+- DASH: XhCnytvKkV44Mn5WeajGfaifgY8vGtamW4
+
 
