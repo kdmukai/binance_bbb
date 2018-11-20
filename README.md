@@ -5,7 +5,7 @@ A Roll-Your-Own approach to setting up your own customized Binance index fund to
 Set up a customized basket of target cryptos and relative weights. Then the `binance_bbb` will buy each of them for you at the specified ratios.
 
 ## Note on Binance market orders
-On many exchanges a market order pays higher fees than a placing a limit buy order. But Binance fees are the same whether you're the maker or the taker. So this bot just places instantly-fulfilled market orders. There's usually sufficient liquidity to assume your order will be filled without the price moving much in the milliseconds it takes to check the market and then place the order.
+On many exchanges a market order pays higher fees than limit orders. But Binance fees are the same whether you're the maker or the taker. So this bot just places instantly-fulfilled market orders. There's usually sufficient liquidity to assume your order will be filled without the price moving much in the milliseconds it takes to check the market and then place the order.
 
 The only way to reduce Binance fees is to hold their BNB token in your account (currently 0.1% fees become 0.075%).
 
