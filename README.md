@@ -4,9 +4,14 @@ A Roll-Your-Own approach to setting up your own customized Binance index fund to
 
 Set up a customized basket of target cryptos and relative weights. Then the `binance_bbb` will buy each of them for you at the specified ratios.
 
+## Note on Binance market orders
+On many exchanges a market order pays higher fees than a placing a limit buy order. But Binance fees are the same whether you're the maker or the taker. So this bot just places instantly-fulfilled market orders. There's usually sufficient liquidity to assume your order will be filled without the price moving much in the milliseconds it takes to check the market and then place the order.
+
+The only way to reduce Binance fees is to hold their BNB token in your account (currently 0.1% fees become 0.075%).
+
 
 # Setup
-- Requires Python 3
+- Requires Python 3.7
 - python3 virtualenv recommended
 
 ## Dependencies
@@ -35,7 +40,7 @@ SNS_TOPIC = enter:your:arn:here
 AWS_ACCESS_KEY_ID = ABCDEFGHIJKLMNOP
 AWS_SECRET_ACCESS_KEY = foobarfoobarfoobar
 ```
-_As noted you can also customize or omit AWS SNS email notification integration._
+_As noted you can also customize or omit AWS SNS notification integration._
 
 Also rename the dummy `portfolio.conf` to `portfolio_local.conf` for the next step.
 
@@ -117,14 +122,14 @@ Binance specifies a minimum buy order value for each crypto (aka `minNotional`).
 But the `minNotional` for BTC orders is 0.001; Binance will not let you place an order whose value is smaller than that.
 
 
-## Manual/Command-Line portfolios
+## Manual/cron buys
 Use the `-m` or `--manual_portfolio` command line option to specify a comma-separated list of cryptos in lieu of your customized portfolio configuration. This option is intended to allow this bot to be used as a simple, schedulable buying bot for a single crypto or basic portfolio of cryptos. In this mode all manually-specified cryptos are given an equal weighting.
 
 For example, you might have a new crypto that you want to build a position in so you'll want to set it on its own dollar-cost averaging buy in schedule, separate from your broader portfolio schedule.
 
 Typically you'd set this up as its own cron job:
 ```
-* */6 * * * /your/virtualenv/path/bin/python -u /your/binance_bbb/path/src/binance_bbb.py BTC 0.00125 -c /your/settings/path/your_settings_file.conf -m ICX,WAN >> /your/cron/log/path/cron.log 2>&1
+* */6 * * * /your/virtualenv/path/bin/python -u /your/binance_bbb/path/src/binance_bbb.py BTC 0.00125 -c /your/settings/path/your_settings_file.conf -m ICX,WAN -j -l >> /your/cron/log/path/cron.log 2>&1
 ```
 In this case the specified 0.00125 BTC will be evenly divided between the two manual portfolio cryptos and will repeat this same buy every six hours.
 
@@ -151,5 +156,3 @@ If you found this useful, send me some digital love
 - BTC: 13u1YbpSzNsvVpPMyzaDAfzP2jRcZUwh96
 - LTC: LMtPGHCQ3as6AEC9ueX4tVQw7GvHegv3fA
 - DASH: XhCnytvKkV44Mn5WeajGfaifgY8vGtamW4
-
-
