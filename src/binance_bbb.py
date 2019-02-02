@@ -74,7 +74,7 @@ if not live_mode:
     print("\n")
 
 # Read settings
-config = configparser.SafeConfigParser()
+config = configparser.ConfigParser()
 config.read(args.settings_config_file)
 
 api_key = config.get('API', 'API_KEY')
