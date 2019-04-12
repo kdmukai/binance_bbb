@@ -1,9 +1,0 @@
-[API]
-API_KEY = your_binance_api_key
-SECRET_KEY = your_binance_api_secret_key
-
-
-[AWS]
-SNS_TOPIC = arn:aws:sns:us-east-1:12345678901234:some_arn
-AWS_ACCESS_KEY_ID = YOUR_AWS_IAM_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY = your_aws_iam_secret_access_key
