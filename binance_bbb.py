@@ -4,6 +4,8 @@ import datetime
 import time
 import boto3
 
+from decimal import Decimal
+
 from binance.exceptions import BinanceAPIException
 from binance.client import Client
 
@@ -19,7 +21,7 @@ parser = argparse.ArgumentParser(description='Binance Balanced Buying Bot')
 parser.add_argument('crypto',
                     help="""The ticker of the crypto to spend (e.g. 'BTC',
                         'ETH', etc)""")
-parser.add_argument('amount', type=float,
+parser.add_argument('amount', type=Decimal,
                     help="The quantity of the crypto to spend (e.g. 0.05)")
 
 # Optional switches
@@ -29,7 +31,7 @@ parser.add_argument('-c', '--settings_config',
                     help="Override default settings config file location")
 
 parser.add_argument('-p', '--portfolio_config',
-                    default="conf/portfolio_local.conf",
+                    default="portfolio.conf",
                     dest="portfolio_config_file",
                     help="Override default portfolio config file location")
 
@@ -100,19 +102,20 @@ if __name__ == "__main__":
     if args.portfolio_manual_override:
         for buy_crypto in args.portfolio_manual_override.split(','):
             # Manually specified override cryptos all get set with equal weighting
-            portfolio_weights[buy_crypto] = 1.0
+            portfolio_weights[buy_crypto] = Decimal('1.0')
     else:
         try:
-            config = configparser.SafeConfigParser()
+            config = configparser.ConfigParser()
             config.read(args.portfolio_config_file)
 
             for buy_crypto, weight in config.items('portfolio_weights'):
-                portfolio_weights[buy_crypto.upper()] = float(weight)
+                portfolio_weights[buy_crypto.upper()] = Decimal(weight).normalize()
         except configparser.NoSectionError:
             print("Your portfolio config is not correctly configured")
             exit()
 
-    print(portfolio_weights)
+    for buy_crypto, weight in portfolio_weights.items():
+        print("%s: %s" % (buy_crypto, weight))
 
     # Instantiate API client
     client = Client(api_key, api_secret)
@@ -126,9 +129,9 @@ if __name__ == "__main__":
             pair_info[pair_obj.get("symbol")] = pair_obj
 
     # First, what is the total weight specified in the portfolio?
-    total_weight = 0.0
+    total_weight = Decimal('0.0')
     for key, weight in portfolio_weights.items():
-        total_weight += float(weight)
+        total_weight += weight
 
     # Verify that each market exists (porfolio-crypto pairing) and that we'll meet
     #   order minimums (minNotional value).
@@ -136,23 +139,25 @@ if __name__ == "__main__":
     for buy_crypto, weight in portfolio_weights.items():
         market = buy_crypto + spending_crypto
         info = pair_info.get(market)
+
         if not info:
-            raise Exception(
-                "%s market not found in Binance exchange info" % market
-            )
-        if weight == 0.0:
-            spending_crypto_value = 0.0
-            step_size = 0.0
+            print("%s market not found in Binance exchange info" % market)
+            exit()
+
+        if weight == Decimal('0.0'):
+            spending_crypto_value = Decimal('0.0')
+            step_size = Decimal('0.0')
+
         else:
             # How much of the spending crypto will go towards this asset?
-            spending_crypto_value = weight/total_weight * spending_crypto_total_amount
+            spending_crypto_value = (weight/total_weight * spending_crypto_total_amount).quantize(Decimal('0.00000001'))
 
             # What's this asset's minimum purchase?
             for filter in info.get("filters"):
                 if "minNotional" in filter:
-                    min_notional = float(filter.get("minNotional"))
+                    min_notional = Decimal(filter.get("minNotional")).normalize()
                 if "stepSize" in filter:
-                    step_size = float(filter.get("stepSize"))
+                    step_size = Decimal(filter.get("stepSize")).normalize()
             if not min_notional:
                 raise Exception("minNotional not found in %s info" % market)
             if not min_notional:
@@ -160,16 +165,9 @@ if __name__ == "__main__":
 
             print(
                 f"{market} target order size: " +
-                f"{spending_crypto_value:.8f} {spending_crypto} " +
-                f"(minNotional: {min_notional}, stepSize: {step_size:.2f})"
+                f"{spending_crypto_value.normalize()} {spending_crypto} " +
+                f"(minNotional: {min_notional}, stepSize: {step_size})"
             )
-
-            if spending_crypto_value < min_notional:
-                raise Exception(
-                    f"Cannot purchase {buy_crypto} at weight {weight}. " +
-                    f"Resulting order of {spending_crypto_value} {spending_crypto} " +
-                    f"is below the minNotional value of {min_notional} {spending_crypto}"
-                )
 
         spending_amounts[market] = {
             "buy_crypto": buy_crypto,
@@ -184,7 +182,7 @@ if __name__ == "__main__":
             print("Exiting without submitting orders.")
             exit()
 
-    total_crypto_spent = 0.0
+    total_crypto_spent = Decimal('0.0')
     purchase_summary = ""
     for market, spending_amount in spending_amounts.items():
         # What are the current bids?
@@ -192,27 +190,36 @@ if __name__ == "__main__":
         amount = spending_amount.get("amount")
         step_size = spending_amount.get("step_size")
 
-        if amount == 0.0:
+        if amount == Decimal('0.0'):
             print(f"Skipping {market} because weight is set to 0.0")
             continue
 
         depth = client.get_order_book(symbol=market, limit=5)
-        first_bid = float(depth.get("bids")[0][0])
+        first_bid = Decimal(depth.get("bids")[0][0])
 
         # How many can we buy with our target amount?
-        quantity = amount / first_bid
+        quantity = (amount / first_bid).quantize(step_size).normalize()
 
         # Have to round the quantity to within the step_size (i.e. can't place an
         #   order for 0.0742 if stepSize is 0.01; would have to be rounded to 0.07)
 
         # Count the step_size's decimal precision; zero if greater than zero.
-        decimals = len(str(round(1/step_size))) - 1
-        quantity = round(quantity, decimals)
-        order_amount = quantity*first_bid
+        # decimals = len(str(round(1/step_size))) - 1
+        # quantity = round(quantity, decimals)
+        order_amount = quantity * first_bid
 
-        print("placing %s order: %5.2f @ %.8f %s. Total spend: %.8f %s" % (
+        if order_amount < min_notional:
+            print(
+                f"Cannot purchase {quantity} {buy_crypto} @ {first_bid} {spending_crypto}. " +
+                f"Resulting order of {order_amount:.8f} {spending_crypto} " +
+                f"is below the minNotional value of {min_notional} {spending_crypto}"
+            )
+            exit()
+
+
+        print("placing %s order: %s @ %.8f %s. Total spend: %.8f %s" % (
             market,
-            quantity,
+            quantity.normalize(),
             first_bid,
             spending_crypto,
             order_amount,
@@ -244,7 +251,7 @@ if __name__ == "__main__":
                     )
                 exit()
 
-        purchase_summary += "%s: %5.2f @ %.8f %s = %.6f %s\n" % (
+        purchase_summary += "%s: %s @ %.8f %s = %0.8f %s\n" % (
             buy_crypto,
             quantity,
             first_bid,
@@ -269,4 +276,4 @@ if __name__ == "__main__":
     print(f"Total orders placed: {total_crypto_spent:.8f} {spending_crypto}")
     if not live_mode:
         print("(NOT in live mode - no actual orders placed!)")
-        
+
