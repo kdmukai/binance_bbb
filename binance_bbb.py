@@ -210,7 +210,7 @@ if __name__ == "__main__":
 
         if order_amount < min_notional:
             print(
-                f"Cannot purchase {quantity} {buy_crypto} @ {first_bid} {spending_crypto}. " +
+                f"Cannot purchase {float(quantity)} {buy_crypto} @ {first_bid} {spending_crypto}. " +
                 f"Resulting order of {order_amount:.8f} {spending_crypto} " +
                 f"is below the minNotional value of {min_notional} {spending_crypto}"
             )
@@ -231,7 +231,7 @@ if __name__ == "__main__":
                 symbol=market,
                 side=Client.SIDE_BUY,
                 type=Client.ORDER_TYPE_MARKET,
-                quantity=quantity
+                quantity=float(quantity)
             )
 
             if order:
@@ -240,7 +240,7 @@ if __name__ == "__main__":
             try:
                 order = client.order_market_buy(
                     symbol=market,
-                    quantity=quantity)
+                    quantity=float(quantity))
             except BinanceAPIException as e:
                 print(f'Unable to place {market} order: {e}')
                 if sns_topic and live_mode:
