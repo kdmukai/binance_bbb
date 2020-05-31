@@ -139,9 +139,9 @@ if __name__ == "__main__":
     for buy_crypto, weight in portfolio_weights.items():
         if buy_crypto == 'BTC':
             # Have to reverse the market pairing
-            market = spending_crypto + buy_crypto
+            market = f"{spending_crypto}_{buy_crypto}"
         else:
-            market = buy_crypto + spending_crypto
+            market = f"{buy_crypto}_{spending_crypto}"
         info = pair_info.get(market)
 
         if not info:
