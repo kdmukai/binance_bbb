@@ -137,7 +137,11 @@ if __name__ == "__main__":
     #   order minimums (minNotional value).
     spending_amounts = {}
     for buy_crypto, weight in portfolio_weights.items():
-        market = buy_crypto + spending_crypto
+        if buy_crypto == 'BTC':
+            # Have to reverse the market pairing
+            market = spending_crypto + buy_crypto
+        else:
+            market = buy_crypto + spending_crypto
         info = pair_info.get(market)
 
         if not info:
