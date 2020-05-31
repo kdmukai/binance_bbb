@@ -146,6 +146,7 @@ if __name__ == "__main__":
 
         if not info:
             print("%s market not found in Binance exchange info" % market)
+            print(pair_info)
             exit()
 
         if weight == Decimal('0.0'):
