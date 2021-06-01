@@ -30,5 +30,5 @@ six==1.11.0
 Twisted==20.3.0
 txaio==2.10.0
 tzlocal==1.5.1
-urllib3==1.24.2
+urllib3==1.26.5
 zope.interface==4.5.0
